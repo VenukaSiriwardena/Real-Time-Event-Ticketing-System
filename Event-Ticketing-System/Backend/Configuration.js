@@ -1,5 +1,5 @@
-import readlineSync from 'readline-sync';
-import fs from 'fs';
+const readlineSync = require('readline-sync');
+const fs = require('fs');
 
 class Configuration {
     #totalTickets;
@@ -82,4 +82,4 @@ class Configuration {
     }
 }
 
-export default Configuration;
+module.exports = Configuration;
