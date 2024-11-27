@@ -1,46 +1,42 @@
-const readlineSync = require('readline-sync');
+const Configuration = require('./Configuration');
+const fs = require('fs');
+const path = require('path');
 
 class TicketPool {
-    #userTypeInput;
 
-    constructor(userTypeInput) {
-        this.#userTypeInput = userTypeInput;
-    }
-
-    getUserTypeInput() {
-        return this.#userTypeInput;
-    }
-
-    setUserTypeInput(userTypeInput) {
-        this.#userTypeInput = userTypeInput;
-    }
-
-    userType(){
-            console.log(`User Type:
-            1. Customer
-            2. Vendor
-            `);
-
-            const userTypeInput = readlineSync.question("Select User Type: ");
-            this.setUserTypeInput(userTypeInput);
-
-            if (userTypeInput === "1") {
-                this.addTickets();
-
-            } else if (userTypeInput === "2") {
-                this.removeTickets();
-
-            }else {
-                console.log("Invalid User Type");
-            }
-    }
-    
     addTickets() {
-        console.log("Add Tickets");
+
     }
 
-    removeTickets() {
-        console.log("Remove Tickets");
+    removeTickets(ticketQty) {
+        // Load existing configuration from JSON file
+        const configFilePath = path.join(__dirname, 'config.json');
+        let configData;
+
+        try {
+            const fileContents = fs.readFileSync(configFilePath, 'utf-8');
+            configData = JSON.parse(fileContents);
+        } catch (error) {
+            console.error("Error reading configuration file:", error);
+            return;
+        }
+
+        // Check if there are enough tickets to remove
+        if (configData.maxTicketCapacity < ticketQty) {
+            console.log("Not enough tickets to remove!");
+            return;
+        }
+
+        // Update the total tickets
+        configData.maxTicketCapacity -= ticketQty;
+
+        // Save the updated configuration back to the JSON file
+        try {
+            fs.writeFileSync(configFilePath, JSON.stringify(configData, null, 2));
+            console.log(`Removed ${ticketQty} tickets. New total: ${configData.maxTicketCapacity}`);
+        } catch (error) {
+            console.error("Error writing to configuration file:", error);
+        }
     }
 }
 

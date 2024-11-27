@@ -1,53 +1,56 @@
 const { Worker, isMainThread } = require('worker_threads');
+const { Mutex } = require('async-mutex');
+
+const mutex = new Mutex();
 
 class Customer {
-    #customerId;
+    #customerID;
     #retrievalInterval;
 
-    constructor(customerId, retrievalInterval) {
-        this.#customerId = customerId;
+    constructor(customerID, retrievalInterval) {
+        this.#customerID = customerID;
         this.#retrievalInterval = retrievalInterval;
     }
 
-    get getCustomerId() {
-        return this.#customerId;
+    getCustomerID() {
+        return this.#customerID;
     }
 
-    get getRetrievalInterval() {
+    getRetrievalInterval() {
         return this.#retrievalInterval;
     }
 
-    set setCustomerId(customerId) {
-        this.#customerId = customerId;
+    async delay(milliseconds) {
+        return new Promise((resolve) => setTimeout(resolve, milliseconds));
     }
 
-    set setRetrievalInterval(retrievalInterval) {
-        this.#retrievalInterval = retrievalInterval;
+    async createCustomer(ticketQty) {
+        if (isMainThread) {
+            const customerID = this.getCustomerID();
+            const retrievalInterval = this.getRetrievalInterval();
+
+            console.log(`Customer ${customerID} will start after ${retrievalInterval}ms.`);
+            await this.delay(retrievalInterval); // Delay before starting the worker thread
+
+            const worker = new Worker('./CustomerThread.js', {
+                workerData: { customerID, ticketQty },
+            });
+
+            worker.postMessage({ action: 'start', ticketQty });
+
+            // Listen for the worker's response
+            worker.once('message', (message) => {
+                console.log(`Customer ${customerID} - Worker response: ${message}`);
+                worker.terminate(); // Terminate the worker after processing
+            });
+
+            // Handle worker errors
+            worker.on('error', (error) => {
+                console.error(`Worker error for Customer ${customerID}:`, error);
+                worker.terminate();
+            });
+        }
     }
 }
 
-    if (isMainThread) {
-        const worker = new Worker('./CustomerThread.js');
-
-        // Listen for messages from the worker
-        worker.on('message', (message) => {
-            console.log(`Main thread received: ${message}`);
-        });
-
-        // Send a message to the worker
-        worker.postMessage({vendorId: 101, message: 'Release tickets'});
-
-        // Handle errors
-        worker.on('error', (error) => {
-            console.error(`Worker error: ${error}`);
-        });
-
-        // Handle worker exit
-        worker.on('exit', (code) => {
-            if (code !== 0) {
-                console.error(`Worker stopped with exit code ${code}`);
-            } else {
-                console.log('Worker exited successfully.');
-            }
-        });
-}
+module.exports = Customer;
