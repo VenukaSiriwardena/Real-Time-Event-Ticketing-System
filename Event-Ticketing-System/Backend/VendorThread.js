@@ -1,15 +1,20 @@
 const { parentPort, workerData } = require('worker_threads');
+const { Mutex } = require('async-mutex');
+const TicketPool = require('./TicketPool');
+const Configuration = require('./Configuration');
 
-// Worker thread logic
-parentPort.on('message', (message) => {
-    console.log(`Worker received: Vendor ID ${message.vendorId}, Task: ${message.message}`);
+const ticketPool = new TicketPool();
+const configuration = new Configuration();
+const mutex = new Mutex();
 
-    // Simulate a task
-    const result = `Processed ticket release for vendor ${message.vendorId}`;
-
-    // Send result back to the main thread
-    parentPort.postMessage(result);
-
-    // Exit the worker
+// Handle ticket requests
+parentPort.on('message', async (message) => {
+    await mutex.runExclusive(() => {
+        if (configuration.getCustomerRetrievalRate < workerData.ticketQty) {
+            parentPort.postMessage(`Ticket Quantity should lower than ${configuration.getCustomerRetrievalRate + 1}`);
+        }else{
+            ticketPool.addTickets(workerData.addTicketQty);
+        }
+    });
     parentPort.close();
 });

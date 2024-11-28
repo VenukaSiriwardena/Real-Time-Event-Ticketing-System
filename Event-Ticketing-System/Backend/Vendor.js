@@ -11,53 +11,66 @@ class Vendor {
         this.#releaseInterval = releaseInterval;
     }
 
-    get getVendorId() {
+    get vendorId() {
         return this.#vendorId;
     }
 
-    get getTicketsPerRelease() {
+    get ticketsPerRelease() {
         return this.#ticketsPerRelease;
     }
 
-    get getReleaseInterval() {
+    get releaseInterval() {
         return this.#releaseInterval;
     }
 
-    set setVendorId(vendorId) {
+    set vendorId(vendorId) {
         this.#vendorId = vendorId;
     }
 
-    set setTicketsPerRelease(ticketsPerRelease) {
+    set ticketsPerRelease(ticketsPerRelease) {
         this.#ticketsPerRelease = ticketsPerRelease;
     }
 
-    set setReleaseInterval(releaseInterval) {
+    set releaseInterval(releaseInterval) {
         this.#releaseInterval = releaseInterval;
+    }
+
+    // Utility function to delay execution
+    delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async createVendor(addTicketQty) {
+        if (isMainThread) {
+            const vendorID = this.vendorId;
+            const releaseInterval = this.releaseInterval;
+            const ticketsPerRelease = this.ticketsPerRelease;
+
+            console.log(`Vendor ${vendorID} will start after ${releaseInterval}ms.`);
+            await this.delay(releaseInterval); // Delay before starting the worker thread
+
+            const worker = new Worker('./VendorThread.js', {
+                workerData: { vendorID, addTicketQty, ticketsPerRelease },
+            });
+
+            // Listen for messages from the worker
+            worker.on('message', (message) => {
+                console.log(`Main thread received: ${message}`);
+            });
+
+            worker.postMessage({ action: 'start', ticketsPerRelease });
+
+            worker.once('message', (message) => {
+                console.log(`Vendor ${vendorID} - Worker response: ${message}`);
+                worker.terminate(); // Terminate the worker after processing
+            });
+
+            worker.on('error', (error) => {
+                console.error(`Worker error for Vendor ${vendorID}:`, error);
+                worker.terminate();
+            });
+        }
     }
 }
 
-if (isMainThread) {
-    const worker = new Worker('./VendorThread.js');
-
-    // Listen for messages from the worker
-    worker.on('message', (message) => {
-        console.log(`Main thread received: ${message}`);
-    });
-
-    // Send a message to the worker
-    worker.postMessage({ vendorId: 101, message: 'Release tickets' });
-
-    // Handle errors
-    worker.on('error', (error) => {
-        console.error(`Worker error: ${error}`);
-    });
-
-    // Handle worker exit
-    worker.on('exit', (code) => {
-        if (code !== 0) {
-            console.error(`Worker stopped with exit code ${code}`);
-        } else {
-            console.log('Worker exited successfully.');
-        }
-    });
-}
+module.exports = Vendor;
