@@ -7,7 +7,6 @@ const ticketPool = new TicketPool();
 const configuration = new Configuration();
 const mutex = new Mutex();
 
-// Handle ticket requests
 parentPort.on('message', async (message) => {
     await mutex.runExclusive(() => {
         if (configuration.getCustomerRetrievalRate < workerData.ticketQty) {

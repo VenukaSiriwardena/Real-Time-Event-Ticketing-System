@@ -3,7 +3,7 @@ const { Mutex } = require('async-mutex');
 
 const mutex = new Mutex();
 
-class Customer {
+class Customer extends TicketPool {
     #customerID;
     #retrievalInterval;
 
