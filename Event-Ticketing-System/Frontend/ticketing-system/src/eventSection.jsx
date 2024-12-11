@@ -1,5 +1,5 @@
 import React from "react";
-import Navbar from "./navbar";
+import Navbar from "./Navbar";
 
 const EventSection = () => {
   const events = [
@@ -40,9 +40,11 @@ const EventSection = () => {
                   <p className="text-gray-600 mt-2">{event.date}</p>
                   <p className="text-gray-600">{event.location}</p>
                   <p className="text-gray-700 mt-4">{event.description}</p>
-                  <button className="mt-4 bg-purple-700 text-white px-4 py-2 rounded-md hover:bg-purple-800 transition">
-                    Buy Tickets
-                  </button>
+                  <a href="/buy">
+                    <button className="mt-4 bg-purple-700 text-white px-4 py-2 rounded-md hover:bg-purple-800 transition">
+                      Buy Tickets
+                    </button>
+                  </a>
                 </div>
               </div>
             ))}

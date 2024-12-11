@@ -1,4 +1,7 @@
 const { Worker, isMainThread } = require('worker_threads');
+const { Mutex } = require('async-mutex');
+
+const mutex = new Mutex();
 
 class Vendor {
     #vendorId;
@@ -11,63 +14,55 @@ class Vendor {
         this.#releaseInterval = releaseInterval;
     }
 
-    get vendorId() {
+    getVendorId() {
         return this.#vendorId;
     }
 
-    get ticketsPerRelease() {
+    getTicketsPerRelease() {
         return this.#ticketsPerRelease;
     }
 
-    get releaseInterval() {
+    getReleaseInterval() {
         return this.#releaseInterval;
     }
 
-    set vendorId(vendorId) {
-        this.#vendorId = vendorId;
-    }
-
-    set ticketsPerRelease(ticketsPerRelease) {
-        this.#ticketsPerRelease = ticketsPerRelease;
-    }
-
-    set releaseInterval(releaseInterval) {
-        this.#releaseInterval = releaseInterval;
-    }
-
     // Utility function to delay execution
-    delay(ms) {
+    async delay(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     async createVendor(addTicketQty) {
         if (isMainThread) {
-            const vendorID = this.vendorId;
-            const releaseInterval = this.releaseInterval;
-            const ticketsPerRelease = this.ticketsPerRelease;
+            const vendorID = this.getVendorId();
+            const releaseInterval = this.getReleaseInterval();
+            const ticketsPerRelease = this.getTicketsPerRelease();
 
             console.log(`Vendor ${vendorID} will start after ${releaseInterval}ms.`);
             await this.delay(releaseInterval); // Delay before starting the worker thread
 
             const worker = new Worker('./VendorThread.js', {
-                workerData: { vendorID, addTicketQty, ticketsPerRelease },
+                workerData: {
+                    vendorID,
+                    addTicketQty,
+                    ticketsPerRelease,
+                    releaseInterval
+                },
             });
 
             // Listen for messages from the worker
             worker.on('message', (message) => {
-                console.log(`Main thread received: ${message}`);
+                console.log(` `);
             });
 
             worker.postMessage({ action: 'start', ticketsPerRelease });
 
-            worker.once('message', (message) => {
-                console.log(`Vendor ${vendorID} - Worker response: ${message}`);
-                worker.terminate(); // Terminate the worker after processing
-            });
-
             worker.on('error', (error) => {
                 console.error(`Worker error for Vendor ${vendorID}:`, error);
                 worker.terminate();
+            });
+
+            worker.on('exit', (code) => {
+                console.log(`Vendor ${vendorID} worker exited with code ${code}`);
             });
         }
     }

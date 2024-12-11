@@ -6,12 +6,16 @@ class Configuration {
     #ticketReleaseRate;
     #customerRetrievalRate;
     #maxTicketCapacity;
+    #customerRetrievalInterval;
+    #VendorReleaseInterval;
 
-    constructor(totalTickets, ticketReleaseRate, customerRetrievalRate, maxTicketCapacity) {
+    constructor(totalTickets, ticketReleaseRate, customerRetrievalRate, maxTicketCapacity, customerRetrievalInterval, VendorReleaseInterval) {
         this.setTotalTickets = totalTickets;
         this.setTicketReleaseRate = ticketReleaseRate;
         this.setCustomerRetrievalRate = customerRetrievalRate;
         this.setMaxTicketCapacity = maxTicketCapacity;
+        this.setCustomerRetrievalInterval = customerRetrievalInterval;
+        this.setVendorReleaseInterval = VendorReleaseInterval;
     }
 
     // Getters
@@ -31,7 +35,13 @@ class Configuration {
         return this.#maxTicketCapacity;
     }
 
+    get getCustomerRetrievalInterval() {
+        return this.#customerRetrievalInterval;
+    }
 
+    get getVendorReleaseInterval() {
+        return this.#VendorReleaseInterval;
+    }
 
     // Setters
     set setTotalTickets(totalTickets) {
@@ -50,6 +60,13 @@ class Configuration {
         this.#maxTicketCapacity = maxTicketCapacity;
     }
 
+    set setCustomerRetrievalInterval(customerRetrievalInterval) {
+        this.#customerRetrievalInterval = customerRetrievalInterval;
+    }
+
+    set setVendorReleaseInterval(VendorReleaseInterval) {
+        this.#VendorReleaseInterval = VendorReleaseInterval;
+    }
 
     // Methods
     configData() {
@@ -67,7 +84,8 @@ class Configuration {
             totalTickets: this.getTotalTickets,
             ticketReleaseRate: this.getTicketReleaseRate,
             customerRetrievalRate: this.getCustomerRetrievalRate,
-            maxTicketCapacity: this.getMaxTicketCapacity
+            maxTicketCapacity: this.getMaxTicketCapacity,
+            ticketPool: this.getMaxTicketCapacity // Ensure ticketPool matches maxTicketCapacity
         };
 
         console.log(`Configuration:
@@ -75,6 +93,7 @@ class Configuration {
         Ticket Release Rate: ${this.getTicketReleaseRate}
         Customer Retrieval Rate: ${this.getCustomerRetrievalRate}
         Max Ticket Capacity: ${this.getMaxTicketCapacity}
+        Ticket Pool: ${data.ticketPool}
         `);
 
         const jsonData = JSON.stringify(data, null, 2);

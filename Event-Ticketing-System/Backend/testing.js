@@ -31,7 +31,7 @@ if (userTypeInput === "1") {
     const ticketQty = parseInt(readlineSync.question("Enter Ticket Quantity: "), 10);
     const intervalRetrieval = parseInt(readlineSync.question("Enter Retrieval Interval (ms): "), 10);
 
-    const customer = new Customer(3, intervalRetrieval); // Example customerID is 101
+    const customer = new Customer(customerID, intervalRetrieval); // Example customerID is 101
     customer.createCustomer(ticketQty);
 
 } else if (userTypeInput === "2") {

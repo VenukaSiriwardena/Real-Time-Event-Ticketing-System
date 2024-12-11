@@ -3,7 +3,7 @@ const { Mutex } = require('async-mutex');
 
 const mutex = new Mutex();
 
-class Customer extends TicketPool {
+class Customer {
     #customerID;
     #retrievalInterval;
 
@@ -33,7 +33,7 @@ class Customer extends TicketPool {
             await this.delay(retrievalInterval); // Delay before starting the worker thread
 
             const worker = new Worker('./CustomerThread.js', {
-                workerData: { customerID, ticketQty },
+                workerData: { customerID, ticketQty }
             });
 
             worker.postMessage({ action: 'start', ticketQty });

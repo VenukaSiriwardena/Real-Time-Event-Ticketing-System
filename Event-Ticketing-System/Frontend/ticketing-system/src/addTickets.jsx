@@ -1,17 +1,76 @@
-import React, { useState } from "react";
-import Navbar from "./navbar";
+import React, { useState, useEffect } from "react";
+import Navbar from "./Navbar";
 
 const TicketAddPage = () => {
+  const [socket, setSocket] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('Connecting...');
   const [formData, setFormData] = useState({
     event: "",
     name: "",
-    email: "",
-    tickets: 1,
+    vendorId: "",
+    addTicketQty: 1,
+  });
+  const [purchaseStatus, setPurchaseStatus] = useState({
+    status: null,
+    message: ""
   });
 
   const events = [
     { id: 1, name: "Music Fest 2025" },
   ];
+
+  useEffect(() => {
+    // Establish WebSocket connection
+    let ws;
+    try {
+      ws = new WebSocket('ws://localhost:5000');
+
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+        setSocket(ws);
+        setConnectionStatus('Connected');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'ADD_TICKETS_RESPONSE') {
+          setPurchaseStatus({
+            status: data.status,
+            message: data.message
+          });
+
+          // Clear form after successful ticket addition
+          if (data.status === 'success') {
+            setFormData({
+              event: "",
+              name: "",
+              vendorId: "",
+              addTicketQty: 1
+            });
+          }
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket connection closed:', event);
+        setConnectionStatus('Disconnected');
+        setSocket(null);
+      };
+    } catch (error) {
+      console.error('WebSocket connection error:', error);
+      setConnectionStatus('Connection Failed');
+      setPurchaseStatus({
+        status: 'error', 
+        message: 'Failed to establish WebSocket connection.'
+      });
+    }
+
+    // Cleanup on component unmount
+    return () => {
+      if (ws) ws.close();
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -20,7 +79,34 @@ const TicketAddPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    alert(`Tickets purchased for ${formData.event}`);
+    
+    // Reset previous status
+    setPurchaseStatus({ status: null, message: "" });
+
+    // Validate form data and connection
+    if (!socket || connectionStatus !== 'Connected') {
+      setPurchaseStatus({
+        status: 'error', 
+        message: 'WebSocket not connected. Please wait or refresh.'
+      });
+      return;
+    }
+
+    // Send ticket addition request
+    try {
+      socket.send(JSON.stringify({
+        type: 'ADD_TICKETS',
+        event: formData.event,
+        vendorId: formData.vendorId,
+        addTicketQty: parseInt(formData.addTicketQty)
+      }));
+    } catch (error) {
+      console.error('Send message error:', error);
+      setPurchaseStatus({
+        status: 'error', 
+        message: 'Failed to send ticket addition request.'
+      });
+    }
   };
 
   return (
@@ -31,6 +117,19 @@ const TicketAddPage = () => {
           <h2 className="text-3xl font-bold text-gray-50 text-center mb-16 mt-10">
             Add Tickets
           </h2>
+          
+          {/* Status Notification */}
+          {purchaseStatus.status && (
+            <div className={`
+              mb-4 p-4 rounded text-center 
+              ${purchaseStatus.status === 'success' 
+                ? 'bg-green-500 text-white' 
+                : 'bg-red-500 text-white'}
+            `}>
+              {purchaseStatus.message}
+            </div>
+          )}
+
           <form
             onSubmit={handleSubmit}
             className="max-w-lg mx-auto bg-white p-8 rounded-lg shadow-md"
@@ -57,7 +156,7 @@ const TicketAddPage = () => {
               </select>
             </div>
 
-            {/* Name Input */}
+            {/* Vendor Name Input */}
             <div className="mb-6">
               <label htmlFor="name" className="block text-gray-700 font-semibold mb-2">
                 Vendor Name
@@ -68,24 +167,24 @@ const TicketAddPage = () => {
                 id="name"
                 value={formData.name}
                 onChange={handleChange}
-                placeholder="Enter your name"
+                placeholder="Enter vendor name"
                 className="w-full px-4 py-2 border rounded-md focus:ring focus:ring-purple-500 focus:outline-none"
                 required
               />
             </div>
 
-            {/* ID Input */}
+            {/* Vendor ID Input */}
             <div className="mb-6">
-              <label htmlFor="email" className="block text-gray-700 font-semibold mb-2">
-                VendorID
+              <label htmlFor="vendorId" className="block text-gray-700 font-semibold mb-2">
+                Vendor ID
               </label>
               <input
-                type="number"
-                name="id"
-                id="id"
-                value={formData.id}
+                type="text"
+                name="vendorId"
+                id="vendorId"
+                value={formData.vendorId}
                 onChange={handleChange}
-                placeholder="Enter your ID number"
+                placeholder="Enter vendor ID"
                 className="w-full px-4 py-2 border rounded-md focus:ring focus:ring-purple-500 focus:outline-none"
                 required
               />
@@ -93,14 +192,14 @@ const TicketAddPage = () => {
 
             {/* Tickets Input */}
             <div className="mb-6">
-              <label htmlFor="tickets" className="block text-gray-700 font-semibold mb-2">
-                Number of Tickets
+              <label htmlFor="addTicketQty" className="block text-gray-700 font-semibold mb-2">
+                Number of Tickets to Add
               </label>
               <input
                 type="number"
-                name="tickets"
-                id="tickets"
-                value={formData.tickets}
+                name="addTicketQty"
+                id="addTicketQty"
+                value={formData.addTicketQty}
                 onChange={handleChange}
                 min="1"
                 className="w-full px-4 py-2 border rounded-md focus:ring focus:ring-purple-500 focus:outline-none"
@@ -113,6 +212,7 @@ const TicketAddPage = () => {
               <button
                 type="submit"
                 className="bg-purple-700 text-white px-6 py-2 rounded-md hover:bg-purple-800 transition"
+                disabled={!socket || connectionStatus !== 'Connected'}
               >
                 Add Tickets
               </button>
