@@ -1,161 +1,110 @@
 const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
+const bodyParser = require('body-parser');
 const cors = require('cors');
-const Vendor = require('./Vendor');
-const Configuration = require('./jsonConfig');
 const TicketPool = require('./TicketPool');
-const Customer = require('./Customer');
+const Configuration = require('./jsonConfig');
 
 const app = express();
-app.use(cors({
-    origin: 'http://localhost:3000', // Adjust to your frontend URL
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
-}));
+const port = 3000;
 
-// Create the HTTP server first
-const server = http.createServer(app);
+app.use(bodyParser.json());
+app.use(cors());
 
-// Then create the WebSocket server
-const wss = new WebSocket.Server({
-    server,
-    clientTracking: true,
-    verifyClient: (info, cb) => {
-        cb(true);
+let clients = [];
+let systemStatus = true; // true means the system is running
+
+app.post('/addTickets', (req, res) => {
+    if (!systemStatus) {
+        return res.status(403).send({ message: 'System is stopped. Cannot add tickets.' });
+    }
+
+    const { addTicketQty, vendorId } = req.body;
+    const ticketPool = new TicketPool();
+
+    try {
+        ticketPool.addTickets(addTicketQty, vendorId);
+        res.status(200).send({ message: 'Tickets added successfully' });
+        notifyClients();
+    } catch (error) {
+        console.error('Error adding tickets:', error);
+        res.status(500).send({ message: 'Failed to add tickets. Please try again.' });
     }
 });
 
-const configuration = new Configuration();
+app.post('/buyTickets', (req, res) => {
+    if (!systemStatus) {
+        return res.status(403).send({ message: 'System is stopped. Cannot buy tickets.' });
+    }
 
-// WebSocket connection handler
-wss.on('connection', (ws) => {
-    console.log('New WebSocket connection');
+    const { ticketQty, customerId } = req.body;
+    const ticketPool = new TicketPool();
 
-    ws.on('message', async (message) => {
-        try {
-            const data = JSON.parse(message);
+    try {
+        ticketPool.removeTickets(ticketQty, customerId);
+        res.status(200).send({ message: 'Tickets purchased successfully' });
+        notifyClients();
+    } catch (error) {
+        console.error('Error purchasing tickets:', error);
+        res.status(500).send({ message: 'Failed to purchase tickets. Please try again.' });
+    }
+});
 
-            switch(data.type) {
-                case 'UPDATE_CONFIGURATION':
-                    try {
-                        // Update each configuration property
-                        configuration.setTotalTickets(data.config.totalTickets);
-                        configuration.setTicketReleaseRate(data.config.releaseRate);
-                        configuration.setCustomerRetrievalRate(data.config.retrievalRate);
-                        configuration.setMaxTicketCapacity(data.config.maxCapacity);
-                        configuration.setCustomerRetrievalInterval(data.config.retrievalInterval);
-                        configuration.setVendorReleaseInterval(data.config.vendorReleaseInterval);
+app.get('/totalTickets', (req, res) => {
+    const ticketPool = new TicketPool();
+    const totalTickets = ticketPool.getTotalTickets();
+    res.json({ totalTickets });
+});
 
-                        ws.send(JSON.stringify({
-                            type: 'CONFIGURATION_RESPONSE',
-                            status: 'success',
-                            message: 'Configuration updated successfully'
-                        }));
-                    } catch (error) {
-                        ws.send(JSON.stringify({
-                            type: 'CONFIGURATION_RESPONSE',
-                            status: 'error',
-                            message: error.toString()
-                        }));
-                    }
-                    break;
+app.get('/ticketsSold', (req, res) => {
+    const ticketPool = new TicketPool();
+    const ticketsSold = ticketPool.getTicketsSold();
+    res.json({ ticketsSold });
+});
 
-                // ... (keep existing cases for PURCHASE_TICKET and ADD_TICKETS)
-                case 'PURCHASE_TICKET':
-                    const { ticketQty } = data;
+app.get('/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
 
-                    if (configuration.getTotalTickets() < ticketQty) {
-                        return ws.send(JSON.stringify({
-                            type: 'PURCHASE_RESPONSE',
-                            status: 'error',
-                            message: 'Not enough tickets available'
-                        }));
-                    }
+    clients.push(res);
 
-                    const customer = new Customer(
-                        `${Date.now()}`,
-                        configuration.getCustomerRetrievalInterval()
-                    );
-
-                    try {
-                        const result = await customer.createCustomer(ticketQty);
-                        ws.send(JSON.stringify({
-                            type: 'PURCHASE_RESPONSE',
-                            status: 'success',
-                            message: `Successfully purchased ${ticketQty} tickets`
-                        }));
-                    } catch (error) {
-                        ws.send(JSON.stringify({
-                            type: 'PURCHASE_RESPONSE',
-                            status: 'error',
-                            message: error.message
-                        }));
-                    }
-                    break;
-
-                case 'ADD_TICKETS':
-                    const { vendorId, addTicketQty, event: ticketEvent } = data;
-
-                    if (!vendorId || !addTicketQty || addTicketQty <= 0) {
-                        return ws.send(JSON.stringify({
-                            type: 'ADD_TICKETS_RESPONSE',
-                            status: 'error',
-                            message: 'Invalid vendor ID or ticket quantity'
-                        }));
-                    }
-
-                    try {
-                        const vendor = new Vendor(
-                            vendorId,
-                            addTicketQty,
-                            1000
-                        );
-
-                        await vendor.createVendor(addTicketQty);
-
-                        ws.send(JSON.stringify({
-                            type: 'ADD_TICKETS_RESPONSE',
-                            status: 'success',
-                            message: `Successfully added ${addTicketQty} tickets for Vendor ${vendorId} to event ${ticketEvent}`
-                        }));
-                    } catch (error) {
-                        console.error('Ticket addition error:', error);
-                        ws.send(JSON.stringify({
-                            type: 'ADD_TICKETS_RESPONSE',
-                            status: 'error',
-                            message: error.toString()
-                        }));
-                    }
-                    break;
-
-                default:
-                    console.log('Unknown message type:', data.type);
-                    ws.send(JSON.stringify({
-                        type: 'ERROR',
-                        message: 'Unknown message type'
-                    }));
-            }
-        } catch (error) {
-            console.error('Error processing WebSocket message:', error);
-        }
-    });
-
-    ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
-    });
-
-    ws.on('close', (code, reason) => {
-        console.log(`WebSocket closed. Code: ${code}, Reason: ${reason}`);
+    req.on('close', () => {
+        clients = clients.filter(client => client !== res);
     });
 });
 
-// Error handling for the server
-server.on('error', (error) => {
-    console.error('HTTP Server error:', error);
+app.get('/systemStatus', (req, res) => {
+    res.json({ systemStatus });
 });
 
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`WebSocket server running on port ${PORT}`);
+app.post('/updateSystemStatus', (req, res) => {
+    systemStatus = req.body.systemStatus;
+    res.status(200).send({ message: 'System status updated successfully' });
+});
+
+app.post('/updateConfig', (req, res) => {
+    const config = new Configuration();
+    const { totalTickets, releaseRate, retrievalRate, maxCapacity, retrievalInterval, vendorReleaseInterval } = req.body;
+
+    try {
+        config.setTotalTickets(totalTickets);
+        config.setTicketReleaseRate(releaseRate);
+        config.setCustomerRetrievalRate(retrievalRate);
+        config.setMaxTicketCapacity(maxCapacity);
+        config.setCustomerRetrievalInterval(retrievalInterval);
+        config.setVendorReleaseInterval(vendorReleaseInterval);
+
+        res.status(200).send({ message: 'Configuration updated successfully' });
+    } catch (error) {
+        console.error('Error updating configuration:', error);
+        res.status(500).send({ message: 'Failed to update configuration. Please try again.' });
+    }
+});
+
+function notifyClients() {
+    clients.forEach(client => client.write(`data: update\n\n`));
+}
+
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
 });

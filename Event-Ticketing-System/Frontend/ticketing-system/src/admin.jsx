@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from "react";
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { Pie } from "react-chartjs-2";
+import axios from 'axios';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -28,74 +24,100 @@ const AdminPanel = () => {
   });
 
   const [systemStatus, setSystemStatus] = useState(false);
-  const [socket, setSocket] = useState(null);
   const [configResponse, setConfigResponse] = useState(null);
+  const [salesData, setSalesData] = useState({
+    labels: ["Tickets Sold", "Tickets Remaining"],
+    datasets: [
+      {
+        data: [0, 0],
+        backgroundColor: ["#4CAF50", "#FFC107"],
+        borderColor: ["#4CAF50", "#FFC107"],
+        borderWidth: 1,
+      },
+    ],
+  });
 
   useEffect(() => {
-    // Establish WebSocket connection
-    const ws = new WebSocket('ws://localhost:5000');
-
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-      setSocket(ws);
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === 'CONFIGURATION_RESPONSE') {
-        setConfigResponse({
-          status: data.status,
-          message: data.message
-        });
-
-        // Clear response after 3 seconds
-        setTimeout(() => {
-          setConfigResponse(null);
-        }, 3000);
+    const fetchConfig = async () => {
+      try {
+        const response = await axios.get('http://localhost:3000/getConfig');
+        setConfig(response.data);
+      } catch (error) {
+        console.error('Error fetching configuration:', error);
       }
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    const fetchSystemStatus = async () => {
+      try {
+        const response = await axios.get('http://localhost:3000/systemStatus');
+        setSystemStatus(response.data.systemStatus);
+      } catch (error) {
+        console.error('Error fetching system status:', error);
+      }
     };
 
-    // Cleanup on component unmount
-    return () => {
-      ws.close();
+    const fetchSalesData = async () => {
+      try {
+        const totalTicketsResponse = await axios.get('http://localhost:3000/totalTickets');
+        const ticketsSoldResponse = await axios.get('http://localhost:3000/ticketsSold');
+        const totalTickets = totalTicketsResponse.data.totalTickets;
+        const ticketsSold = ticketsSoldResponse.data.ticketsSold;
+        setSalesData({
+          labels: ["Tickets Sold", "Tickets Remaining"],
+          datasets: [
+            {
+              data: [ticketsSold, totalTickets - ticketsSold],
+              backgroundColor: ["#4CAF50", "#FFC107"],
+              borderColor: ["#4CAF50", "#FFC107"],
+              borderWidth: 1,
+            },
+          ],
+        });
+      } catch (error) {
+        console.error('Error fetching sales data:', error);
+      }
     };
-  }, []);
+
+    fetchConfig();
+    fetchSystemStatus();
+    fetchSalesData();
+
+    const intervalId = setInterval(fetchSalesData, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [config.maxCapacity]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setConfig({ ...config, [name]: parseInt(value, 10) || 0 });
   };
 
-  const handleSubmit = () => {
-    if (socket) {
-      socket.send(JSON.stringify({
-        type: 'UPDATE_CONFIGURATION',
-        config: config
-      }));
-    } else {
-      console.error('WebSocket not connected');
+  const handleSubmit = async () => {
+    try {
+      const response = await axios.post('http://localhost:3000/updateConfig', config);
+      setConfigResponse({
+        status: 'success',
+        message: response.data.message
+      });
+
+      setTimeout(() => {
+        setConfigResponse(null);
+      }, 3000);
+    } catch (error) {
+      setConfigResponse({
+        status: 'error',
+        message: 'Failed to update configuration. Please try again.'
+      });
     }
   };
 
-  const toggleSystemStatus = () => {
-    setSystemStatus(!systemStatus);
-  };
-
-  const salesData = {
-    labels: ["Tickets Sold", "Tickets Remaining"],
-    datasets: [
-      {
-        data: [600, 400],
-        backgroundColor: ["#4CAF50", "#FFC107"],
-        borderColor: ["#4CAF50", "#FFC107"],
-        borderWidth: 1,
-      },
-    ],
+  const toggleSystemStatus = async () => {
+    try {
+      const response = await axios.post('http://localhost:3000/updateSystemStatus', { systemStatus: !systemStatus });
+      setSystemStatus(!systemStatus);
+    } catch (error) {
+      console.error('Error updating system status:', error);
+    }
   };
 
   const chartOptions = {
@@ -111,7 +133,6 @@ const AdminPanel = () => {
             Admin Panel
           </h2>
 
-          {/* Configuration Response */}
           {configResponse && (
             <div className={`mb-4 p-4 rounded ${
               configResponse.status === 'success' 
@@ -122,7 +143,6 @@ const AdminPanel = () => {
             </div>
           )}
 
-          {/* Configuration Section */}
           <div className="bg-white p-6 rounded-lg shadow-md mb-10">
             <h3 className="text-2xl font-bold text-gray-800 mb-6">
               Ticket Configuration
@@ -159,7 +179,6 @@ const AdminPanel = () => {
             </button>
           </div>
 
-          {/* System Status Section */}
           <div className="bg-white p-6 rounded-lg shadow-md mb-10">
             <h3 className="text-2xl font-bold text-gray-800 mb-6">System Status</h3>
             <button
@@ -178,7 +197,6 @@ const AdminPanel = () => {
             </p>
           </div>
 
-          {/* Sales Chart Section */}
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h3 className="text-2xl font-bold text-gray-800 mb-6">Number of Sales</h3>
             <div className="w-1/2 mx-auto" style={{ height: "200px" }}>

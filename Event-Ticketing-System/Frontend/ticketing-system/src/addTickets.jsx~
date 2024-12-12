@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "./Navbar";
-import axios from 'axios';
 
 const TicketAddPage = () => {
+  const [socket, setSocket] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('Connecting...');
   const [formData, setFormData] = useState({
     event: "",
     name: "",
@@ -13,62 +14,108 @@ const TicketAddPage = () => {
     status: null,
     message: ""
   });
+  const [systemStatus, setSystemStatus] = useState(false);
 
   const events = [
     { id: 1, name: "Music Fest 2025" },
   ];
+
+  useEffect(() => {
+    // Establish WebSocket connection
+    let ws;
+    try {
+      ws = new WebSocket('ws://localhost:5000');
+
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+        setSocket(ws);
+        setConnectionStatus('Connected');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'ADD_TICKETS_RESPONSE') {
+          setPurchaseStatus({
+            status: data.status,
+            message: data.message
+          });
+
+          // Clear form after successful ticket addition
+          if (data.status === 'success') {
+            setFormData({
+              event: "",
+              name: "",
+              vendorId: "",
+              addTicketQty: 1
+            });
+          }
+        } else if (data.type === 'SYSTEM_STATUS') {
+          setSystemStatus(data.status);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket connection closed:', event);
+        setConnectionStatus('Disconnected');
+        setSocket(null);
+      };
+    } catch (error) {
+      console.error('WebSocket connection error:', error);
+      setConnectionStatus('Connection Failed');
+      setPurchaseStatus({
+        status: 'error',
+        message: 'Failed to establish WebSocket connection.'
+      });
+    }
+
+    // Cleanup on component unmount
+    return () => {
+      if (ws) ws.close();
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
 
     // Reset previous status
     setPurchaseStatus({ status: null, message: "" });
 
-    // Validate form data
-    if (!formData.event || !formData.name || !formData.vendorId || formData.addTicketQty < 1) {
+    // Validate form data and connection
+    if (!socket || connectionStatus !== 'Connected') {
       setPurchaseStatus({
         status: 'error',
-        message: 'Please fill in all fields correctly.'
+        message: 'WebSocket not connected. Please wait or refresh.'
       });
       return;
     }
 
-    try {
-      const statusResponse = await axios.get('http://localhost:3000/systemStatus');
-      if (!statusResponse.data.systemStatus) {
-        setPurchaseStatus({
-          status: 'error',
-          message: 'System is stopped. Cannot add tickets.'
-        });
-        return;
-      }
-
-      const response = await axios.post('http://localhost:3000/addTickets', {
-        addTicketQty: formData.addTicketQty,
-        vendorId: formData.vendorId
-      });
-
-      setPurchaseStatus({
-        status: 'success',
-        message: response.data.message
-      });
-
-      // Clear form after successful ticket addition
-      setFormData({
-        event: "",
-        name: "",
-        vendorId: "",
-        addTicketQty: 1
-      });
-    } catch (error) {
+    if (!systemStatus) {
       setPurchaseStatus({
         status: 'error',
-        message: 'Failed to add tickets. Please try again.'
+        message: 'System did not start yet.'
+      });
+      return;
+    }
+
+    // Send ticket addition request
+    try {
+      socket.send(JSON.stringify({
+        type: 'ADD_TICKETS',
+        event: formData.event,
+        vendorId: formData.vendorId,
+        addTicketQty: parseInt(formData.addTicketQty)
+      }));
+    } catch (error) {
+      console.error('Send message error:', error);
+      setPurchaseStatus({
+        status: 'error',
+        message: 'Failed to send ticket addition request.'
       });
     }
   };
@@ -176,6 +223,7 @@ const TicketAddPage = () => {
               <button
                 type="submit"
                 className="bg-purple-700 text-white px-6 py-2 rounded-md hover:bg-purple-800 transition"
+                disabled={!socket || connectionStatus !== 'Connected'}
               >
                 Add Tickets
               </button>

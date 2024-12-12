@@ -1,12 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2');
+const { v4: uuidv4 } = require('uuid');
 
 const connection = mysql.createConnection({
     host: 'localhost',
     user: 'root',
     password: '',
     database: 'node_database'
+});
+
+connection.connect((err) => {
+    if (err) {
+        console.error('Error connecting to the database:', err);
+        return;
+    }
+    console.log('Connected to the MySQL database!');
 });
 
 class TicketPool {
@@ -46,15 +55,6 @@ class TicketPool {
             console.error("Error writing to configuration file:", error);
         }
 
-        // Connect to the database
-        connection.connect((err) => {
-            if (err) {
-                console.error('Error connecting to the database:', err);
-                return;
-            }
-            console.log('Connected to the MySQL database!');
-        });
-
         const insertQuery = 'INSERT INTO vendor (VendorID, NumOfTicketsAdd) VALUES (?, ?)';
         const values = [vendorID, addTicketQty];
 
@@ -62,14 +62,10 @@ class TicketPool {
         connection.query(insertQuery, values, (err, results) => {
             if (err) {
                 console.error('Error executing query:', err);
-                return;
+            } else {
+                console.log('Ticket addition recorded in the database.');
             }
-            console.log('');
         });
-
-        // Close the connection when done
-        connection.end();
-
     }
 
     removeTickets(ticketQty, CustomerID) {
@@ -96,8 +92,9 @@ class TicketPool {
             return;
         }
 
-        // Update the total tickets
+        // Update the total tickets and calculate tickets sold
         configData.ticketPool -= ticketQty;
+        configData.ticketsSold = (configData.ticketsSold || 0) + ticketQty;
 
         // Save the updated configuration back to the JSON file
         try {
@@ -107,28 +104,52 @@ class TicketPool {
             console.error("Error writing to configuration file:", error);
         }
 
-        connection.connect((err) => {
-            if (err) {
-                console.error('Error connecting to the database:', err);
-                return;
-            }
-            console.log('Connected to the MySQL database!');
-        });
+        // Generate a unique CustomerID using UUID
+        const uniqueCustomerID = uuidv4();
 
         const insertQuery = 'INSERT INTO customer (CustomerID, NumOfTicketsBuy) VALUES (?, ?)';
-        const values = [CustomerID, ticketQty];
+        const values = [uniqueCustomerID, ticketQty];
 
         // Insert data into the database
         connection.query(insertQuery, values, (err, results) => {
             if (err) {
                 console.error('Error executing query:', err);
-                return;
+            } else {
+                console.log('Ticket purchase recorded in the database.');
             }
-            console.log('');
         });
+    }
 
-        // Close the connection when done
-        connection.end();
+    getTotalTickets() {
+        // Load existing configuration from JSON file
+        const configFilePath = path.join(__dirname, 'config.json');
+        let configData;
+
+        try {
+            const fileContents = fs.readFileSync(configFilePath, 'utf-8');
+            configData = JSON.parse(fileContents);
+        } catch (error) {
+            console.error("Error reading configuration file:", error);
+            return 0;
+        }
+
+        return configData.totalTickets;
+    }
+
+    getTicketsSold() {
+        // Load existing configuration from JSON file
+        const configFilePath = path.join(__dirname, 'config.json');
+        let configData;
+
+        try {
+            const fileContents = fs.readFileSync(configFilePath, 'utf-8');
+            configData = JSON.parse(fileContents);
+        } catch (error) {
+            console.error("Error reading configuration file:", error);
+            return 0;
+        }
+
+        return configData.ticketsSold || 0;
     }
 }
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "./Navbar";
+import axios from 'axios';
 
 const TicketBuyPage = () => {
   const [formData, setFormData] = useState({
@@ -8,95 +9,76 @@ const TicketBuyPage = () => {
     email: "",
     tickets: 1,
   });
-  const [websocket, setWebSocket] = useState(null);
   const [purchaseStatus, setPurchaseStatus] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('Connecting...');
+  const [totalTickets, setTotalTickets] = useState(0);
 
   const events = [
     { id: 1, name: "Music Fest 2025" },
     { id: 2, name: "Summer Concert Series" }
   ];
 
-  const connectWebSocket = useCallback(() => {
-    if (websocket) {
-      websocket.close();
-    }
-
-    const ws = new WebSocket('ws://localhost:5000');
-
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-      setWebSocket(ws);
-      setConnectionStatus('Connected');
-    };
-
-    ws.onmessage = (event) => {
+  useEffect(() => {
+    const fetchTotalTickets = async () => {
       try {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === 'PURCHASE_RESPONSE') {
-          setPurchaseStatus({
-            success: data.status === 'success',
-            message: data.message
-          });
-        }
+        const response = await axios.get('http://localhost:3000/totalTickets');
+        setTotalTickets(response.data.totalTickets);
       } catch (error) {
-        console.error('Error parsing message:', error);
+        console.error('Error fetching total tickets:', error);
       }
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setConnectionStatus('Connection failed');
-      setPurchaseStatus({
-        success: false,
-        message: 'Connection error. Please try again.'
-      });
-    };
+    fetchTotalTickets();
 
-    ws.onclose = (event) => {
-      console.log('WebSocket connection closed:', event);
-      setWebSocket(null);
-      setConnectionStatus('Disconnected');
-      
-      setTimeout(connectWebSocket, 3000);
+    const eventSource = new EventSource('http://localhost:3000/events');
+    eventSource.onmessage = () => {
+      fetchTotalTickets();
     };
-  }, []);
-
-  useEffect(() => {
-    connectWebSocket();
 
     return () => {
-      if (websocket) {
-        websocket.close();
-      }
+      eventSource.close();
     };
-  }, [connectWebSocket]);
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+
+    try {
+      const statusResponse = await axios.get('http://localhost:3000/systemStatus');
+      if (!statusResponse.data.systemStatus) {
+        setPurchaseStatus({
+          success: false,
+          message: "System didn't Start yet. Try again Later"
+        });
+        return;
+      }
+
+      const response = await axios.post('http://localhost:3000/buyTickets', {
+        ticketQty: formData.tickets,
+        customerId: formData.email // Assuming email is used as customerId
+      });
+
+      setPurchaseStatus({
+        success: true,
+        message: response.data.message
+      });
+
+      setFormData({
+        event: "",
+        name: "",
+        email: "",
+        tickets: 1
+      });
+    } catch (error) {
       setPurchaseStatus({
         success: false,
-        message: 'WebSocket not connected. Reconnecting...'
+        message: 'Failed to purchase tickets. Please try again.'
       });
-      connectWebSocket();
-      return;
     }
-
-    websocket.send(JSON.stringify({
-      type: 'PURCHASE_TICKET',
-      event: formData.event,
-      name: formData.name,
-      email: formData.email,
-      ticketQty: formData.tickets
-    }));
   };
 
   return (
@@ -110,14 +92,18 @@ const TicketBuyPage = () => {
 
           {purchaseStatus && (
             <div className={`mb-4 p-4 rounded ${
-              purchaseStatus.success 
-                ? 'bg-green-100 text-green-800' 
+              purchaseStatus.success
+                ? 'bg-green-100 text-green-800'
                 : 'bg-red-100 text-red-800'
             } text-center`}>
               {purchaseStatus.message}
             </div>
           )}
-          
+
+          <div className="text-center text-white mb-6">
+            Total Tickets Available: {totalTickets}
+          </div>
+
           <form
             onSubmit={handleSubmit}
             className="max-w-lg mx-auto bg-white p-8 rounded-lg shadow-md"
@@ -195,7 +181,6 @@ const TicketBuyPage = () => {
               <button
                 type="submit"
                 className="bg-purple-700 text-white px-6 py-2 rounded-md hover:bg-purple-800 transition"
-                disabled={connectionStatus !== 'Connected'}
               >
                 Buy Tickets
               </button>
